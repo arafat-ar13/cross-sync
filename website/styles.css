@@ -1,0 +1,9 @@
+body {
+    min-height: 100vh;
+    background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
+}
+
+.logo {
+    width: 200px; /* Adjust this value to the size you want */
+    height: auto;
+}
