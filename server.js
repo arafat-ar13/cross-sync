@@ -34,6 +34,15 @@ class Database {
             console.log(`A row has been inserted with rowid ${this.lastID}`);
         });
     }
+
+    getHistory(callback) {
+        this.db.all(`SELECT * FROM visited_urls ORDER BY id DESC`, [], (err, rows) => {
+          if (err) {
+            throw err;
+          }
+          callback(rows);
+        });
+    }
 }
 
 class Server {
@@ -47,6 +56,12 @@ class Server {
         this.app.post("/visited", (req, res) => {
             this.database.insertUrl(req.body.url);
             res.sendStatus(200);
+        });
+
+        this.app.get("/history", (req, res) => {
+            this.database.getHistory((history) => {
+              res.json(history);
+            });
         });
     }
 
