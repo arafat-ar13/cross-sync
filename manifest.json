@@ -1,0 +1,15 @@
+{
+    "manifest_version": 2,
+    "name": "Cross Sync",
+    "version": "1.0",
+    "description": "Syncs user data across different browsers",
+    "author": "Arafat Khan",
+    "permissions": ["<all_urls>", "history", "bookmarks"],
+    "background": {
+      "scripts": ["background.js"],
+      "persistent": false
+    },
+    "browser_action": {
+      "default_popup": "popup.html"
+    }
+  }
