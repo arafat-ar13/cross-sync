@@ -1,5 +1,6 @@
 function fetchAndDisplayHistory() {
     const sessionId = localStorage.getItem('sessionId');
+    console.log("HELLO FETCHING HISTORY")
     fetch('http://localhost:3000/history', {
         headers: {
             "Authorization": "Bearer " + sessionId,
@@ -18,6 +19,7 @@ function fetchAndDisplayHistory() {
         data.forEach(item => {
             const p = document.createElement('p');
             p.textContent = item.url;
+            p.className = 'list-group-item list-group-item-action'; // Add Bootstrap classes
             historyDiv.appendChild(p);
         });
 
@@ -37,7 +39,7 @@ function fetchAndDisplayHistory() {
 }
 
 // Call the function to fetch and display the history
-fetchAndDisplayHistory();
+document.addEventListener('DOMContentLoaded', fetchAndDisplayHistory);
 
 function handleLoginFormSubmission(event) {
     event.preventDefault();

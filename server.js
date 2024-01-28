@@ -1,65 +1,75 @@
 // server.js
 
+require("dotenv").config();
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcrypt');
 const session = require('express-session');
+const { Client } = require('pg');
 
+const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false
+    }
+});
+
+client.connect();
 
 class Database {
-    constructor(dbPath) {
-        this.db = new sqlite3.Database(dbPath, (err) => {
-            if (err) {
-                console.error(err.message);
-            }
-            console.log('Connected to the SQLite database.');
-        });
+    constructor(client) {
+        this.client = client;
     }
 
-    createHistoryTable() {
-        this.db.run(`CREATE TABLE IF NOT EXISTS visited_urls (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            url TEXT NOT NULL,
-            userId INTEGER NOT NULL
-          );`, (err) => {
-            if (err) {
-              console.error(err.message);
-            }
-        });
+    async createHistoryTable() {
+        try {
+            await this.client.query(`
+                CREATE TABLE IF NOT EXISTS visited_urls (
+                    id SERIAL PRIMARY KEY,
+                    url TEXT NOT NULL,
+                    userId INTEGER NOT NULL
+                );
+            `);
+            console.log('History table created successfully.');
+        } catch (err) {
+            console.error('Error creating history table:', err);
+        }
     }
 
-    createUserTable() {
-        this.db.run(`CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL
-        );`, (err) => {
-            if (err) {
-              console.error(err.message);
-            }
-        });
+    async createUserTable() {
+        try {
+            await this.client.query(`
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL
+                );
+            `);
+            console.log('Users table created successfully.');
+        } catch (err) {
+            console.error('Error creating users table:', err);
+        }
     }
 
-
-    insertUrl(url, userId) {
-        this.db.run(`INSERT INTO visited_urls(url, userId) VALUES(?, ?)`, [url, userId], function(err) {
-            if (err) {
-              return console.error(err.message);
-            }
-            console.log(`A row has been inserted with rowid ${this.lastID} and for ${userId}`);
-        });
+    async insertUrl(url, userId) {
+        try {
+            const result = await this.client.query(`INSERT INTO visited_urls(url, userId) VALUES($1, $2) RETURNING id`, [url, userId]);
+            console.log(`A row has been inserted with rowid ${result.rows[0].id} and for ${userId}`);
+        } catch (err) {
+            console.error('Error inserting URL:', err);
+        }
     }
 
-    getHistory(userId, callback) {
-        this.db.all(`SELECT * FROM visited_urls WHERE userId = ? ORDER BY id DESC`, [userId], (err, rows) => {
-          if (err) {
-            throw err;
-          }
-          callback(rows);
-          console.log("Got history for a user" + userId)
-        });
+    async getHistory(userId) {
+        try {
+            const result = await this.client.query(`SELECT * FROM visited_urls WHERE userId = $1 ORDER BY id DESC`, [userId]);
+            return result.rows;
+        } catch (err) {
+            console.error('Error getting history:', err);
+        }
     }
 }
 
@@ -71,12 +81,6 @@ class Server {
         this.database = database;
         this.port = port
 
-        // this.app.post("/visited", (req, res) => {
-        //     console.log("this is the NEW SESSION")
-        //     this.database.insertUrl(req.body.url, req.session.userId);
-        //     res.sendStatus(200);
-        // });
-
         // Set up session middleware
         this.app.use(session({
             secret: "NLGFNLKAJGKLJFGLJG4258742598732893247892572394",
@@ -84,82 +88,76 @@ class Server {
             saveUninitialized: true
         }));
 
-        this.app.get("/history", (req, res) => {
+        this.app.get("/history", async (req, res) => {
             const userId = req.session.userId;
             if (!userId) {
                 res.status(401).send('Not logged in');
                 return;
             }
-
-            this.database.getHistory(userId, (history) => {
-              res.json(history);
-            });
+        
+            try {
+                const history = await this.database.getHistory(userId);
+                res.json(history);
+            } catch (err) {
+                console.error(err);
+                res.status(500).send('Server error');
+            }
         });
     }
 
     registerUser() {
-        this.app.post('/register', (req, res) => {
+        this.app.post('/register', async (req, res) => {
             const { username, password } = req.body;
-
+    
             // Hash the password
-            bcrypt.hash(password, 10, (err, hash) => {
-                if (err) {
-                    console.error(err);
-                    return res.status(500).send('Server error');
-                }
-
+            try {
+                const hash = await bcrypt.hash(password, 10);
+    
                 // Insert the new user into the database
-                this.database.db.run(`INSERT INTO users(username, password) VALUES(?, ?)`, [username, hash], function(err) {
-                    if (err) {
-                        console.error(err.message);
-                        return res.status(400).send('Could not create user');
-                    }
-
-                    req.session.userId = this.lastID;
-                    req.session.save();
-                    res.status(200).json({ userId: req.session.userId });
-                    console.log("user created" + this.lastID)
-                });
-            });
+                const result = await this.database.client.query(`INSERT INTO users(username, password) VALUES($1, $2) RETURNING id`, [username, hash]);
+    
+                req.session.userId = result.rows[0].id;
+                req.session.save();
+                res.status(200).json({ userId: req.session.userId });
+                console.log("user created" + result.rows[0].id);
+            } catch (err) {
+                console.error(err);
+                return res.status(500).send('Server error');
+            }
         });
     }
 
     loginUser() {
-        this.app.post('/login', (req, res) => {
+        this.app.post('/login', async (req, res) => {
             const { username, password } = req.body;
-
+    
             // Get the user from the database
-            this.database.db.get(`SELECT * FROM users WHERE username = ?`, [username], (err, row) => {
-                if (err) {
-                    console.error(err);
-                    return res.status(500).send('Server error');
-                }
-
+            try {
+                const result = await this.database.client.query(`SELECT * FROM users WHERE username = $1`, [username]);
+    
                 // If the user doesn't exist, send an error response
-                if (!row) {
+                if (result.rows.length === 0) {
                     return res.status(400).send('Invalid username or password');
                 }
-
-                // Compare the hashed passwords
-                bcrypt.compare(password, row.password, (err, result) => {
-                    if (err) {
-                        console.error(err);
-                        return res.status(500).send('Server error');
-                    }
-
-                    // If the passwords match, the user is authenticated
-                    if (result) {
-                        // Create a session for the user
-                        req.session.userId = row.id;
-                        // localStorage.setItem('userId', row.id);
-                        req.session.save();
-                        console.log("user authenticated with name " + req.session.userId)
-                        return res.status(200).json({ userId: row.id });
-                    } else {
-                        return res.status(400).send('Invalid username or password');
-                    }
-                });
-            });
+    
+                const user = result.rows[0];
+    
+                // Check the password
+                const match = await bcrypt.compare(password, user.password);
+    
+                if (!match) {
+                    return res.status(400).send('Invalid username or password');
+                }
+    
+                // Log the user in
+                req.session.userId = user.id;
+                req.session.save();
+                res.status(200).json({ userId: req.session.userId });
+                console.log("user logged in" + user.id);
+            } catch (err) {
+                console.error(err);
+                return res.status(500).send('Server error');
+            }
         });
     }
 
@@ -201,9 +199,21 @@ class Server {
     }
 }
 
-const sq_database = new Database('./mydb.sqlite3');
+const sq_database = new Database(client);
 sq_database.createHistoryTable();
 sq_database.createUserTable();
 
 const server = new Server(database=sq_database, port=3000);
 server.startServer();
+
+process.on('SIGINT', async () => {
+    console.log('Received SIGINT. Closing PostgreSQL client.');
+    await client.end();
+    process.exit();
+});
+
+process.on('SIGTERM', async () => {
+    console.log('Received SIGTERM. Closing PostgreSQL client.');
+    await client.end();
+    process.exit();
+});
