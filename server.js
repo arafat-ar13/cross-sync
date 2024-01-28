@@ -181,6 +181,22 @@ class Server {
             this.database.insertUrl(req.body.url, req.session.userId);
             res.sendStatus(200);
         });
+        this.app.post("/logout", (req, res) => {
+            const authHeader = req.headers['authorization'];
+            const sessionId = authHeader && authHeader.split(' ')[1];
+        
+            if (sessionId) {
+                req.session.destroy(err => {
+                    if (err) {
+                        return res.sendStatus(500);
+                    }
+        
+                    res.sendStatus(200);
+                });
+            } else {
+                res.sendStatus(401);
+            }
+        });
         this.app.listen(this.port, () => console.log(`Server listening on port ${this.port}`));
     }
 }

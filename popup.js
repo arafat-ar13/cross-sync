@@ -1,17 +1,39 @@
 function fetchAndDisplayHistory() {
-    fetch('http://localhost:3000/history')
-        .then(response => response.json())
-        .then(data => {
-            const historyDiv = document.getElementById('history');
-            data.forEach(item => {
-                const p = document.createElement('p');
-                p.textContent = item.url;
-                historyDiv.appendChild(p);
-            });
-        })
-        .catch((error) => {
-            console.error('Error:', error);
+    const sessionId = localStorage.getItem('sessionId');
+    fetch('http://localhost:3000/history', {
+        headers: {
+            "Authorization": "Bearer " + sessionId,
+        },
+        credentials: 'include',
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        return response.json();
+    })
+    .then(data => {
+        const historyDiv = document.getElementById('history');
+        historyDiv.innerHTML = '';
+        data.forEach(item => {
+            const p = document.createElement('p');
+            p.textContent = item.url;
+            historyDiv.appendChild(p);
         });
+
+        // Hide the login and signup forms
+        document.getElementById('login-form-div').style.display = 'none';
+        document.getElementById('signup-form-div').style.display = 'none';
+
+    })
+    .catch((error) => {
+        console.error('Error:', error);
+
+        // Show the login form
+        document.getElementById('login-form-div').style.display = 'block';
+        document.getElementById('signup-form-div').style.display = 'block';
+
+    });
 }
 
 // Call the function to fetch and display the history
@@ -34,6 +56,14 @@ function handleLoginFormSubmission(event) {
     .then(response => response.json())
     .then(data => {
         localStorage.setItem('sessionId', data.sessionId);
+
+        //  // Hide the login and forms
+        //  document.getElementById('login-form-div').style.display = 'none';
+        //  document.getElementById('signup-form-div').style.display = 'none';
+
+         // Show the browsing history
+         fetchAndDisplayHistory();
+        document.getElementById('history').style.display = 'block';
     })
     .catch((error) => {
         console.error('Error:', error);
@@ -63,7 +93,39 @@ function handleRegisterFormSubmission(event) {
     });
 }
 
+
+function handleLogout() {
+    const sessionId = localStorage.getItem('sessionId');
+    fetch('http://localhost:3000/logout', {
+        method: 'POST',
+        headers: {
+            "Authorization": "Bearer " + sessionId,
+        },
+        credentials: 'include',
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+
+        localStorage.removeItem('sessionId');
+
+        console.log("logged out");
+
+        // Show the login form
+        document.getElementById('login-form-div').style.display = 'block';
+        document.getElementById('signup-form-div').style.display = 'block';
+
+        // Hide the history
+        document.getElementById('history').style.display = 'none';
+    })
+    .catch((error) => {
+        console.error('Error:', error);
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('login-form').addEventListener('submit', handleLoginFormSubmission);
     document.getElementById('signup-form').addEventListener('submit', handleRegisterFormSubmission);
+    document.getElementById('logout-button').addEventListener('click', handleLogout);
 });
