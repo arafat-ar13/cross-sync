@@ -1,6 +1,6 @@
 # cross-sync
 
-![Cross Sync Logo]("media/logo.jpg")
+![Cross Sync Logo](media/logo.jpeg)
 
 Stop giving away valuable browser data to big tech companies!
 
